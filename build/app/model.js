@@ -22,9 +22,12 @@ var GlobalEnv = YUI.namespace('Env.Model'),
     YObject   = Y.Object,
 
     /**
-    Fired when one or more attributes on this model are changed.
+    Notification event fired when one or more attributes on this model are changed.
+    This event has no default behavior and cannot be prevented, so the _on_ or _after_
+    moments are effectively equivalent (with on listeners being invoked before after listeners).
 
     @event change
+    @preventable false
     @param {Object} new New values for the attributes that were changed.
     @param {Object} prev Previous values for the attributes that were changed.
     @param {String} src Source of the change event.
@@ -95,6 +98,9 @@ Y.Model = Y.extend(Model, Y.Base, {
     initializer: function (config) {
         this.changed    = {};
         this.lastChange = {};
+        
+        if ( ! this.attrAdded(this.get('pk'))) {
+        }
     },
 
     // TODO: destructor?
@@ -237,7 +243,7 @@ Y.Model = Y.extend(Model, Y.Base, {
     @return {Boolean} `true` if this model is new, `false` otherwise.
     **/
     isNew: function () {
-        return !this.get('id');
+        return !this.get(this.get('pk'));
     },
 
     /**
@@ -453,6 +459,11 @@ Y.Model = Y.extend(Model, Y.Base, {
                 }
             }
 
+            // lazy publish of `change` event
+            this._changeEvt || (this._changeEvt = this.publish(EVT_CHANGE, {
+                preventable: false
+            }));
+            
             this.fire(EVT_CHANGE, {changed: lastChange});
         }
 
@@ -503,6 +514,8 @@ Y.Model = Y.extend(Model, Y.Base, {
 
         delete attrs.initialized;
         delete attrs.destroyed;
+        delete attrs.pk;
+        delete attrs.clientId;
 
         return attrs;
     },
@@ -656,20 +669,23 @@ Y.Model = Y.extend(Model, Y.Base, {
             valueFn : 'generateClientId',
             readOnly: true
         },
-
+        
         /**
-        A string that identifies this model. This id may be used to retrieve
-        model instances from lists and may also be used as an identifier in
-        model URLs, so it should be unique.
-
-        If the id is empty, this model instance is assumed to represent a new
-        item that hasn't yet been saved.
-
-        @attribute id
+        The attribute name which should be considered the primary-key.
+        The primary-key is used to dynamically determine which attribute
+        will be used to _identify_ the model instance. The default primary-key
+        is _id_ and should be overridden if the model class uses a different
+        attribute as it’s primary-key.
+        
+        @attribue pk
         @type String
-        @default ''.
+        @default 'id'
+        @readOnly
         **/
-        id: {value: ''}
+        pk: {
+            value   : 'id',
+            readOnly: true
+        }
     }
 });
 

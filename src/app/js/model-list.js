@@ -61,7 +61,18 @@ var JSON   = Y.JSON || JSON,
     @param {int} index The index of the model being removed.
     @preventable _defRemoveFn
     **/
-    EVT_REMOVE = 'remove';
+    EVT_REMOVE = 'remove',
+    
+    /**
+    Notification event fired when `add()`, `remove()`, or `refresh()` are called.
+    This event has no default behavior and cannot be prevented, so the _on_ or _after_
+    moments are effectively equivalent (with on listeners being invoked before after listeners).
+
+    @event update
+    @preventable false
+    @param {Object} originEvent Source of the change event.
+    **/
+    EVT_UPDATE = 'update';
 
 function ModelList() {
     ModelList.superclass.constructor.apply(this, arguments);
@@ -93,6 +104,11 @@ Y.ModelList = Y.extend(ModelList, Y.Base, {
         this.publish(EVT_ADD,     {defaultFn: this._defAddFn});
         this.publish(EVT_REFRESH, {defaultFn: this._defRefreshFn});
         this.publish(EVT_REMOVE,  {defaultFn: this._defRemoveFn});
+        this.publish(EVT_UPDATE,  {preventable: false});
+        
+        this.after([EVT_ADD, EVT_REFRESH, EVT_REMOVE], function(e){
+            this.fire(EVT_UPDATE, {originEvent: e});
+        });
 
         if (model) {
             this.after('*:idChange', this._afterIdChange);
@@ -161,7 +177,7 @@ Y.ModelList = Y.extend(ModelList, Y.Base, {
         var list = new Y.ModelList;
 
         list.comparator = function (model) {
-            return model.get('id'); // Sort models by id.
+            return model.get('id'); // Sort models by their id.
         };
 
     @method comparator
@@ -523,6 +539,17 @@ Y.ModelList = Y.extend(ModelList, Y.Base, {
     @return {String} URL for this list.
     **/
     url: function () { return ''; },
+    
+    /**
+    Returns a copy of this list’s items that can be passed to
+    `Y.JSON.stringify()` or used for other nefarious purposes.
+
+    @method toJSON
+    @return {Array} Copy of this list's items.
+    **/
+    toJSON: function () {
+        return this.map(function(model){ return model.toJSON(); });
+    },
 
     // -- Protected Methods ----------------------------------------------------
 
@@ -808,5 +835,5 @@ suitable for being passed to `Y.JSON.stringify()`.
 **/
 
 Y.ArrayList.addMethod(ModelList.prototype, [
-    'get', 'getAsHTML', 'getAsURL', 'toJSON'
+    'get', 'getAsHTML', 'getAsURL'
 ]);

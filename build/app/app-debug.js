@@ -28,9 +28,12 @@ var GlobalEnv = YUI.namespace('Env.Model'),
     YObject   = Y.Object,
 
     /**
-    Fired when one or more attributes on this model are changed.
+    Notification event fired when one or more attributes on this model are changed.
+    This event has no default behavior and cannot be prevented, so the _on_ or _after_
+    moments are effectively equivalent (with on listeners being invoked before after listeners).
 
     @event change
+    @preventable false
     @param {Object} new New values for the attributes that were changed.
     @param {Object} prev Previous values for the attributes that were changed.
     @param {String} src Source of the change event.
@@ -101,6 +104,10 @@ Y.Model = Y.extend(Model, Y.Base, {
     initializer: function (config) {
         this.changed    = {};
         this.lastChange = {};
+        
+        if ( ! this.attrAdded(this.get('pk'))) {
+            Y.log('Primary-Key Attribute does not exist', 'warn', 'model');
+        }
     },
 
     // TODO: destructor?
@@ -243,7 +250,7 @@ Y.Model = Y.extend(Model, Y.Base, {
     @return {Boolean} `true` if this model is new, `false` otherwise.
     **/
     isNew: function () {
-        return !this.get('id');
+        return !this.get(this.get('pk'));
     },
 
     /**
@@ -459,6 +466,11 @@ Y.Model = Y.extend(Model, Y.Base, {
                 }
             }
 
+            // lazy publish of `change` event
+            this._changeEvt || (this._changeEvt = this.publish(EVT_CHANGE, {
+                preventable: false
+            }));
+            
             this.fire(EVT_CHANGE, {changed: lastChange});
         }
 
@@ -509,6 +521,8 @@ Y.Model = Y.extend(Model, Y.Base, {
 
         delete attrs.initialized;
         delete attrs.destroyed;
+        delete attrs.pk;
+        delete attrs.clientId;
 
         return attrs;
     },
@@ -663,20 +677,23 @@ Y.Model = Y.extend(Model, Y.Base, {
             valueFn : 'generateClientId',
             readOnly: true
         },
-
+        
         /**
-        A string that identifies this model. This id may be used to retrieve
-        model instances from lists and may also be used as an identifier in
-        model URLs, so it should be unique.
-
-        If the id is empty, this model instance is assumed to represent a new
-        item that hasn't yet been saved.
-
-        @attribute id
+        The attribute name which should be considered the primary-key.
+        The primary-key is used to dynamically determine which attribute
+        will be used to _identify_ the model instance. The default primary-key
+        is _id_ and should be overridden if the model class uses a different
+        attribute as it’s primary-key.
+        
+        @attribue pk
         @type String
-        @default ''.
+        @default 'id'
+        @readOnly
         **/
-        id: {value: ''}
+        pk: {
+            value   : 'id',
+            readOnly: true
+        }
     }
 });
 
@@ -747,7 +764,18 @@ var JSON   = Y.JSON || JSON,
     @param {int} index The index of the model being removed.
     @preventable _defRemoveFn
     **/
-    EVT_REMOVE = 'remove';
+    EVT_REMOVE = 'remove',
+    
+    /**
+    Notification event fired when `add()`, `remove()`, or `refresh()` are called.
+    This event has no default behavior and cannot be prevented, so the _on_ or _after_
+    moments are effectively equivalent (with on listeners being invoked before after listeners).
+
+    @event update
+    @preventable false
+    @param {Object} originEvent Source of the change event.
+    **/
+    EVT_UPDATE = 'update';
 
 function ModelList() {
     ModelList.superclass.constructor.apply(this, arguments);
@@ -779,9 +807,14 @@ Y.ModelList = Y.extend(ModelList, Y.Base, {
         this.publish(EVT_ADD,     {defaultFn: this._defAddFn});
         this.publish(EVT_REFRESH, {defaultFn: this._defRefreshFn});
         this.publish(EVT_REMOVE,  {defaultFn: this._defRemoveFn});
+        this.publish(EVT_UPDATE,  {preventable: false});
+        
+        this.after([EVT_ADD, EVT_REFRESH, EVT_REMOVE], function(e){
+            this.fire(EVT_UPDATE, {originEvent: e});
+        });
 
         if (model) {
-            this.after('*:idChange', this._afterIdChange);
+            this.after('*:' + this.get('pk') + 'Change', this._afterIdChange);
         } else {
             Y.log('No model class specified.', 'warn', 'model-list');
         }
@@ -847,7 +880,7 @@ Y.ModelList = Y.extend(ModelList, Y.Base, {
         var list = new Y.ModelList;
 
         list.comparator = function (model) {
-            return model.get('id'); // Sort models by id.
+            return model.get('id'); // Sort models by their id.
         };
 
     @method comparator
@@ -1392,7 +1425,7 @@ Y.ModelList = Y.extend(ModelList, Y.Base, {
     **/
     _defAddFn: function (e) {
         var model = e.model,
-            id    = model.get('id');
+            id    = model.get(model.get('pk'));
 
         this._clientIdMap[model.get('clientId')] = model;
 
@@ -1435,7 +1468,7 @@ Y.ModelList = Y.extend(ModelList, Y.Base, {
     **/
     _defRemoveFn: function (e) {
         var model = e.model,
-            id    = model.get('id');
+            id    = model.get(model.get('pk'));
 
         this._detachList(model);
         delete this._clientIdMap[model.get('clientId')];
@@ -1630,7 +1663,9 @@ Y.View = Y.extend(View, Y.Base, {
         this.attachEvents(this.events);
     },
 
-    // TODO: destructor?
+    destructor: function () {
+        this.container.remove(true);    // purges delegated event listeners
+    },
 
     // -- Public Methods -------------------------------------------------------
 

@@ -20,9 +20,12 @@ var GlobalEnv = YUI.namespace('Env.Model'),
     YObject   = Y.Object,
 
     /**
-    Fired when one or more attributes on this model are changed.
+    Notification event fired when one or more attributes on this model are changed.
+    This event has no default behavior and cannot be prevented, so the _on_ or _after_
+    moments are effectively equivalent (with on listeners being invoked before after listeners).
 
     @event change
+    @preventable false
     @param {Object} new New values for the attributes that were changed.
     @param {Object} prev Previous values for the attributes that were changed.
     @param {String} src Source of the change event.
@@ -273,7 +276,7 @@ Y.Model = Y.extend(Model, Y.Base, {
         this.sync('read', options, function (err, response) {
             if (!err) {
                 self.setAttrs(self.parse(response), options);
-                this.changed = {};
+                self.changed = {};
             }
 
             callback && callback.apply(null, arguments);
@@ -364,7 +367,7 @@ Y.Model = Y.extend(Model, Y.Base, {
         this.sync(this.isNew() ? 'create' : 'update', options, function (err, response) {
             if (!err && response) {
                 self.setAttrs(self.parse(response), options);
-                this.changed = {};
+                self.changed = {};
             }
 
             callback && callback.apply(null, arguments);
@@ -451,6 +454,11 @@ Y.Model = Y.extend(Model, Y.Base, {
                 }
             }
 
+            // lazy publish of `change` event
+            this._changeEvt || (this._changeEvt = this.publish(EVT_CHANGE, {
+                preventable: false
+            }));
+            
             this.fire(EVT_CHANGE, {changed: lastChange});
         }
 
@@ -497,10 +505,15 @@ Y.Model = Y.extend(Model, Y.Base, {
     @return {Object} Copy of this model's attributes.
     **/
     toJSON: function () {
-        var attrs = this.getAttrs();
+        var attrs   = this.getAttrs(),
+            exclude = this._getExclude(),
+            attr;
 
-        delete attrs.initialized;
-        delete attrs.destroyed;
+        for (attr in exclude) {
+            if (YObject.owns(exclude, attr) && exclude[attr]) {
+                delete attrs[attr];
+            }
+        }
 
         return attrs;
     },
@@ -631,9 +644,29 @@ Y.Model = Y.extend(Model, Y.Base, {
                 e._transaction[e.attrName] = e;
             }
         }
-    }
+    },
+    
+    _getExclude : function () {
+        if (this.exclude) { return this.exclude; }
+
+        var exclude = [],
+            c       = this.constructor;
+
+        while (c) {
+            exclude.push(c.EXCLUDE);
+            c = c.superclass ? c.superclass.constructor : null;
+        }
+
+        return ( this.exclude = Y.merge.apply(null, exclude.reverse()) );
+    },
 }, {
     NAME: 'model',
+    
+    EXCLUDE: {
+        initialized : true,
+        destroyed   : true,
+        clientId    : true
+    },
 
     ATTRS: {
         // TODO: what to do about Y.Base's default 'destroyed' and 'initialized'
@@ -655,7 +688,7 @@ Y.Model = Y.extend(Model, Y.Base, {
             valueFn : 'generateClientId',
             readOnly: true
         },
-
+        
         /**
         A string that identifies this model. This id may be used to retrieve
         model instances from lists and may also be used as an identifier in
