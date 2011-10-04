@@ -282,14 +282,15 @@ Y.Controller = Y.extend(Controller, Y.Base, {
 
     /**
     Returns `true` if this controller has at least one route that matches the
-    specified URL path, `false` otherwise.
+    specified URL, `false` otherwise.
 
     @method hasRoute
-    @param {String} path URL path to match.
+    @param {String} url URL to match.
     @return {Boolean} `true` if there's at least one matching route, `false`
       otherwise.
     **/
-    hasRoute: function (path) {
+    hasRoute: function (url) {
+        var path = this.removeRoot(url);
         return !!this.match(path).length;
     },
 
@@ -879,4 +880,4 @@ Y.Controller = Y.extend(Controller, Y.Base, {
 });
 
 
-}, '@VERSION@' ,{requires:['array-extras', 'base-build', 'history'], optional:['querystring-parse']});
+}, '@VERSION@' ,{optional:['querystring-parse'], requires:['array-extras', 'base-build', 'history']});
